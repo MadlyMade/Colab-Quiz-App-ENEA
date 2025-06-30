@@ -1,3 +1,4 @@
+// File: static/script.js (Versione Corretta e Definitiva)
 class QuizApp {
     constructor() {
         this.NUM_QUESTIONS_PER_TEST = 40;
@@ -14,34 +15,46 @@ class QuizApp {
 
     async init() {
         try {
+            // L'URL dell'API deve corrispondere a quello definito in app.py
             const response = await fetch('/api/questions');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             this.questionBank = await response.json();
             this.initState();
-            this.renderView();
+            this.renderCurrentView();
         } catch (error) {
-            this.DOM.viewContainer.innerHTML = '<h1>Errore nel caricamento delle domande. Riprova.</h1>';
+            console.error('Fatal Error: Could not load questions.', error);
+            this.DOM.viewContainer.innerHTML = '<h1>Errore critico nel caricamento delle domande. Riprova più tardi.</h1>';
         }
     }
 
     initState() {
+        const currentUser = localStorage.getItem('quizUser_CTER2024');
         this.state = {
-            currentUser: localStorage.getItem('quizUser_CTER2024') || null,
-            currentView: localStorage.getItem('quizUser_CTER2024') ? 'mainMenu' : 'login',
+            currentUser: currentUser,
+            currentView: currentUser ? 'mainMenu' : 'login',
             quizHistory: [],
-            currentQuizQuestions: [], currentQuestionIndex: 0,
-            userAnswers: [], questionStatus: [],
-            timerInterval: null, isPaused: false,
-            timeRemaining: this.QUIZ_TIME_MINUTES * 60
+            currentQuizQuestions: [],
+            currentQuestionIndex: 0,
+            userAnswers: [],
+            questionStatus: [],
+            timerInterval: null,
+            isPaused: false,
+            timeRemaining: this.QUIZ_TIME_MINUTES * 60,
+            lastResult: null,
+            reviewingTest: null
         };
-        this.loadHistory();
+        this.loadHistoryForCurrentUser();
     }
-
-    loadHistory() {
+    
+    loadHistoryForCurrentUser() {
         if (!this.state.currentUser) return;
         try {
-            const history = JSON.parse(localStorage.getItem(`quizHistory_${this.state.currentUser}`));
-            this.state.quizHistory = Array.isArray(history) ? history : [];
+            const historyData = localStorage.getItem(`quizHistory_${this.state.currentUser}`);
+            this.state.quizHistory = historyData ? JSON.parse(historyData) : [];
         } catch (e) {
+            console.error("Could not parse history, resetting.", e);
             this.state.quizHistory = [];
         }
     }
@@ -57,60 +70,57 @@ class QuizApp {
     
     // --- USER MANAGEMENT ---
     login() {
-        const username = document.getElementById('username').value.trim();
+        const usernameInput = document.getElementById('username');
+        const username = usernameInput ? usernameInput.value.trim() : '';
         if (username) {
             this.state.currentUser = username;
             localStorage.setItem('quizUser_CTER2024', username);
-            this.state.currentView = 'mainMenu';
-            this.loadHistory();
-            this.renderView();
+            this.loadHistoryForCurrentUser();
+            this.changeView('mainMenu');
         }
     }
     
     logout() {
         localStorage.removeItem('quizUser_CTER2024');
         this.initState();
-        this.renderView();
+        this.renderCurrentView();
     }
 
-    // --- VIEW RENDERING ---
-    renderView() {
+    // --- VIEW RENDERING & NAVIGATION ---
+    renderCurrentView() {
         this.DOM.pauseButton.style.display = 'none';
         let html = '';
         switch (this.state.currentView) {
-            case 'login':
-                html = this.getLoginView();
-                break;
-            case 'mainMenu':
-                html = this.getMainMenuView();
-                break;
+            case 'login': html = this.getLoginView(); break;
+            case 'mainMenu': html = this.getMainMenuView(); break;
             case 'quiz':
                 html = this.getQuizView();
                 this.DOM.pauseButton.style.display = 'block';
-                // Defer rendering of question to avoid element not found errors
+                // Defer DOM manipulation until after the view is rendered
                 setTimeout(() => {
                     this.renderQuestion();
                     this.renderQuestionMap();
                 }, 0);
                 break;
-            case 'results':
-                html = this.getResultsView();
-                break;
-            case 'history':
-                html = this.getHistoryView();
-                break;
-            case 'review':
-                html = this.getReviewView();
-                break;
+            case 'results': html = this.getResultsView(); break;
+            case 'history': html = this.getHistoryView(); break;
+            case 'review': html = this.getReviewView(); break;
+            default: html = '<h2>Vista non trovata</h2>';
         }
         this.DOM.viewContainer.innerHTML = `<div class="main-content active fade-in">${html}</div>`;
     }
     
+    changeView(view) {
+        this.state.currentView = view;
+        this.renderCurrentView();
+    }
+
+    // --- HTML TEMPLATE GETTERS ---
     getLoginView() {
         return `<div style="text-align: center;">
                     <h2>Benvenuto/a!</h2>
                     <p>Inserisci il tuo nome per iniziare e salvare i tuoi progressi.</p>
-                    <input type="text" id="username" class="input-field" placeholder="Il tuo nome...">
+                    <input type="text" id="username" class="input-field" placeholder="Il tuo nome..." onkeydown="if(event.key==='Enter') app.login()">
                     <button class="btn" onclick="app.login()">Entra</button>
                 </div>`;
     }
@@ -137,9 +147,11 @@ class QuizApp {
         const result = this.state.lastResult;
         return `<h2 style="text-align:center; margin-bottom: 20px;">🎉 Test Completato!</h2>
             <div class="score-circle" style="background: ${result.percentage >= 60 ? 'var(--secondary-color)' : 'var(--danger-color)'}">${result.percentage}%</div>
-            <div class="results-stats"><div class="stat-card"><div class="stat-number" style="color:var(--secondary-color)">${result.score}</div><div class="stat-label">Corrette</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--danger-color)">${this.NUM_QUESTIONS_PER_TEST - result.score - result.unanswered}</div><div class="stat-label">Errate</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--medium-text)">${result.unanswered}</div><div class="stat-label">Non Risposte</div></div></div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin: 30px 0;">
+                <div class="stat-card"><div class="stat-number" style="color:var(--secondary-color)">${result.score}</div><div class="stat-label">Corrette</div></div>
+                <div class="stat-card"><div class="stat-number" style="color:var(--danger-color)">${this.NUM_QUESTIONS_PER_TEST - result.score - result.unanswered}</div><div class="stat-label">Errate</div></div>
+                <div class="stat-card"><div class="stat-number" style="color:var(--medium-text)">${result.unanswered}</div><div class="stat-label">Non Risposte</div></div>
+            </div>
             <div style="text-align:center; margin-top: 30px;"><button class="btn" onclick="app.startQuiz()">🔄 Nuovo Test</button><button class="btn btn-secondary" onclick="app.changeView('mainMenu')">🏠 Menu Principale</button></div>`;
     }
 
@@ -160,33 +172,44 @@ class QuizApp {
             const userAnswerIndex = testData.userAnswers[i];
             let optionsHTML = q.options.map((opt, optIndex) => {
                 let optClass = 'option review-option answered';
-                if(optIndex === q.correct) optClass += ' correct';
-                if(optIndex === userAnswerIndex) optClass += ' user-choice';
-                if(userAnswerIndex !== null && optIndex === userAnswerIndex && optIndex !== q.correct) optClass += ' incorrect';
+                if (optIndex === q.correct) optClass += ' correct';
+                if (userAnswerIndex !== null && optIndex === userAnswerIndex && optIndex !== q.correct) optClass += ' incorrect';
+                if (optIndex === userAnswerIndex) optClass += ' user-choice';
                 return `<div class="${optClass}">${opt}</div>`;
             }).join('');
-            return `<div class="review-card"><p class="question-text">${i+1}. ${q.question}</p><div class="options">${optionsHTML}</div><div class="explanation" style="display:block"><strong>Spiegazione:</strong> ${q.explanation}</div></div>`;
+            return `<div class="review-card"><p class="question-text">${i + 1}. ${q.question}</p><div class="options">${optionsHTML}</div><div class="explanation" style="display:block"><strong>Spiegazione:</strong> ${q.explanation}</div></div>`;
         }).join('');
         return reviewHTML;
     }
 
-    changeView(view) {
-        this.state.currentView = view;
-        this.renderView();
-    }
-    
     // --- QUIZ LOGIC ---
     startQuiz() {
-        this.initState();
         this.state.currentQuizQuestions = this.shuffleArray([...this.questionBank]).slice(0, this.NUM_QUESTIONS_PER_TEST);
         this.state.userAnswers = new Array(this.NUM_QUESTIONS_PER_TEST).fill(null);
         this.state.questionStatus = new Array(this.NUM_QUESTIONS_PER_TEST).fill('untouched');
+        this.state.currentQuestionIndex = 0;
+        this.state.timeRemaining = this.QUIZ_TIME_MINUTES * 60;
         this.changeView('quiz');
         this.startTimer();
     }
 
     renderQuestion() {
-        // ... (this logic is now inside getQuizView's setTimeout)
+        const question = this.state.currentQuizQuestions[this.state.currentQuestionIndex];
+        const userAnswer = this.state.userAnswers[this.state.currentQuestionIndex];
+        const hasAnswered = userAnswer !== null;
+        document.getElementById('question-counter').textContent = `Domanda ${this.state.currentQuestionIndex + 1} / ${this.NUM_QUESTIONS_PER_TEST}`;
+        document.getElementById('question-card-container').innerHTML = `<div class="question-card fade-in"><p class="question-text">${question.question}</p><div class="options">${question.options.map((option, index) => {
+            let optionClass = 'option';
+            if (hasAnswered) {
+                optionClass += ' answered';
+                if (index === question.correct) optionClass += ' correct';
+                else if (index === userAnswer) optionClass += ' incorrect';
+            }
+            return `<div class="${optionClass}" onclick="app.selectOption(${index})">${option}</div>`;
+        }).join('')}</div><div class="explanation" style="display: ${hasAnswered ? 'block' : 'none'}"><strong>Spiegazione:</strong> ${question.explanation}</div></div>`;
+        document.getElementById('prev-btn').disabled = this.state.currentQuestionIndex === 0;
+        document.getElementById('next-btn').disabled = this.state.currentQuestionIndex === this.NUM_QUESTIONS_PER_TEST - 1;
+        this.updateQuestionMap();
     }
 
     selectOption(optionIndex) {
@@ -194,17 +217,7 @@ class QuizApp {
         const question = this.state.currentQuizQuestions[this.state.currentQuestionIndex];
         this.state.userAnswers[this.state.currentQuestionIndex] = optionIndex;
         this.state.questionStatus[this.state.currentQuestionIndex] = optionIndex === question.correct ? 'correct' : 'incorrect';
-        
-        // Update view with feedback
-        const questionCard = document.querySelector('.question-card');
-        const options = questionCard.querySelectorAll('.option');
-        options.forEach((opt, index) => {
-            opt.classList.add('answered');
-            if(index === question.correct) opt.classList.add('correct');
-            else if(index === optionIndex) opt.classList.add('incorrect');
-        });
-        questionCard.querySelector('.explanation').style.display = 'block';
-        this.updateQuestionMap();
+        this.renderQuestion();
     }
 
     renderQuestionMap() {
@@ -213,7 +226,9 @@ class QuizApp {
     }
     
     updateQuestionMap() {
-        const boxes = document.getElementById('question-map').children;
+        const map = document.getElementById('question-map');
+        if (!map) return;
+        const boxes = map.children;
         for (let i = 0; i < boxes.length; i++) {
             boxes[i].className = `q-map-box ${this.state.questionStatus[i]}`;
             if (i === this.state.currentQuestionIndex) {
@@ -226,11 +241,7 @@ class QuizApp {
         }
     }
 
-    jumpToQuestion(index) {
-        this.state.currentQuestionIndex = index;
-        this.renderQuestion();
-    }
-    
+    jumpToQuestion(index) { this.state.currentQuestionIndex = index; this.renderQuestion(); }
     previousQuestion() { if(this.state.currentQuestionIndex > 0) this.jumpToQuestion(this.state.currentQuestionIndex - 1); }
     nextQuestion() { if(this.state.currentQuestionIndex < this.NUM_QUESTIONS_PER_TEST - 1) this.jumpToQuestion(this.state.currentQuestionIndex + 1); }
     
@@ -263,7 +274,6 @@ class QuizApp {
         this.state.quizHistory.unshift(result);
         if (this.state.quizHistory.length > 5) this.state.quizHistory.pop();
         this.saveHistory();
-        
         this.changeView('results');
     }
 
@@ -280,5 +290,7 @@ class QuizApp {
     }
 }
 
-// Start the application
-const app = new QuizApp();
+// Initialize the application once the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.app = new QuizApp();
+});
