@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulatore Esame ENEA - CTER 2024</title>
+    <!-- Il link al CSS è gestito da Flask -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header Fisso -->
+        <div class="header"><h1>Simulatore Esame ENEA - CTER 2024</h1><p>Posizione C13: Sviluppo componenti e sistemi sperimentali</p></div>
+
+        <!-- Le viste verranno renderizzate qui da JavaScript -->
+        <div id="view-container"></div>
+    </div>
+
+    <!-- Pulsante Pausa -->
+    <button id="pause-button" onclick="app.togglePause()">❚❚</button>
+    <div id="pause-overlay"><h2 style="font-size: 3em;">Pausa</h2><button class="btn" onclick="app.togglePause()">Riprendi Test</button></div>
+    
+    <!-- Lo script JS viene caricato alla fine -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
