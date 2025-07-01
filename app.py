@@ -1,4 +1,4 @@
-# File: app.py (Versione Corretta e Semplificata)
+# File: app.py (Versione Definitiva per Replit)
 import json
 from flask import Flask, render_template, jsonify
 
@@ -23,6 +23,9 @@ def get_questions():
         # Se il file delle domande non esiste, ritorna un errore JSON
         return jsonify({"error": "Il file delle domande non è stato trovato."}), 404
 
+# Questo blocco è FONDAMENTALE per Replit.
+# Dice: "Se questo file viene eseguito direttamente, avvia il server web".
 if __name__ == '__main__':
-    # Questo blocco non viene usato da Gunicorn in Colab, ma è utile per test locali
-    app.run(debug=True, port=5000)
+    # host='0.0.0.0' dice a Flask di essere visibile all'esterno del suo "contenitore".
+    # port=8080 è una porta standard che Replit gestisce bene.
+    app.run(host='0.0.0.0', port=8080)
